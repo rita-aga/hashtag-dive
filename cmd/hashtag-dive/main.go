@@ -15,16 +15,21 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// Ways to improve:
+// randomize waitime
+// add ability to fetch more posts
+// create config with the following:
+// wait time range
+// username
+// password
+// number of posts on users page
+// number of posts from hashtag
+// clean up logs
+// add ability to process multiple hashtags
+// add ability to pick up interrupted session
+// write to file still doesn't work
+
 func main() {
-	// opts := []chromedp.ExecAllocatorOption{
-	// 	chromedp.ExecPath(`/Applications/Chromium.app/Contents/MacOS/Chromium`),
-	// 	chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3830.0 Safari/537.36"),
-	// 	chromedp.WindowSize(1920, 1080),
-	// 	chromedp.NoFirstRun,
-	// 	chromedp.NoDefaultBrowserCheck,
-	// 	chromedp.Headless,
-	// 	chromedp.DisableGPU,
-	// }
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", false),
 		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3830.0 Safari/537.36"),
@@ -78,7 +83,7 @@ func main() {
 		  })(window, navigator, window.navigator);`
 
 	// define hashtag
-	hashtag := "35mm"
+	hashtag := "urbanphotography"
 
 	// number of posts to process
 	// postNum := 50
@@ -87,7 +92,6 @@ func main() {
 	var hashtagPosts []*cdp.Node
 
 	var postOwners []string
-	// postOwners = []
 
 	err := chromedp.Run(taskCtx, chromedp.ActionFunc(func(ctx context.Context) error {
 		var err error
@@ -241,22 +245,35 @@ func processUser(ctx context.Context, user string) error {
 	var file *os.File
 	var userPosts []*cdp.Node
 	// check if file with proccessed users exists
-	if fileExists("processed_users.txt") {
-		fmt.Println("processed_users.txt exists")
-	} else {
-		fmt.Println("processed_users.txt does not exist, creating...")
-		// create file if doesn't exist
-		f, err := os.Create("processed_users.txt")
+	if fileExists("processed_users.log") {
+		log.Printf("processed_users.log exists")
+		f, err := os.OpenFile("processed_users.log",
+			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			return fmt.Errorf("Error creating processed_users.txt: %v", err)
+			return fmt.Errorf("Error opening processed_users.log: %v", err)
 		}
+		defer f.Close()
+		file = f
+	} else {
+		log.Printf("processed_users.log does not exist, creating...")
+		// create file if doesn't exist
+		_, err := os.Create("processed_users.log")
+		if err != nil {
+			return fmt.Errorf("Error creating processed_users.log: %v", err)
+		}
+		f, err := os.OpenFile("processed_users.log",
+			os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return fmt.Errorf("Error opening processed_users.log: %v", err)
+		}
+		defer f.Close()
 		file = f
 	}
 
 	// check in file if user is processed
-	dat, err := ioutil.ReadFile("processed_users.txt")
+	dat, err := ioutil.ReadFile("processed_users.log")
 	if err != nil {
-		return fmt.Errorf("Error reading processed_users.txt: %v", err)
+		return fmt.Errorf("Error reading processed_users.log: %v", err)
 	}
 	usersStr := string(dat)
 	processedUsers := strings.Split(usersStr, "\n")
@@ -280,11 +297,10 @@ func processUser(ctx context.Context, user string) error {
 
 	// loop through post elements and process them
 	for i, p := range userPosts {
-		if i > 10 {
+		if i > 10 { // number of posts to like
 			// mark user as proccessed in file
-			// TODO fix
 			n, _ := file.WriteString(fmt.Sprintf("%v\n", user))
-			fmt.Printf("wrote %d bytes\n", n)
+			log.Printf("wrote %d bytes, user: %v\n", n, user)
 			return nil
 		}
 		err := processPost(ctx, p)
@@ -294,9 +310,8 @@ func processUser(ctx context.Context, user string) error {
 	}
 
 	// mark user as proccessed in file
-	// TODO fix
 	n, err := file.WriteString(fmt.Sprintf("%v\n", user))
-	fmt.Printf("wrote %d bytes\n", n)
+	log.Printf("wrote %d bytes, user: %v\n", n, user)
 	return nil
 }
 
